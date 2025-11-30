@@ -24,7 +24,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v5.1.1
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-${{ github.repository.owner }}-${{ github.repository.name }}-role
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-${{ github.repository_owner }}-${{ github.event.repository.name }}-role
           role-session-name: ${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Build website
