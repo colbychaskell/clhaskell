@@ -1,0 +1,35 @@
+.hero-text {
+  background-color: rgba(33, 37, 41, 0.95);
+  z-index: 1;
+  left: 0;
+}
+
+div.row.hero {
+  background: url("../img/hagen-dock.png") no-repeat center center;
+  background-position: top;
+  background-size: cover;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+.hero-text p > a {
+  color: var(--company-orange) !important;
+}
+
+.hero-text p > a:hover {
+  color: var(--company-orange-light) !important;
+}
+
+div.hero-text h1,
+div.hero-text h5,
+div.hero-text p {
+  color: white;
+}
+
+div.hero-text h1 {
+  /* font-style: italic; */
+  font-weight: bold;
+  font-size: 1.7em;
+}
