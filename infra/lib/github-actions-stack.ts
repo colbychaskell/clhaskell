@@ -7,13 +7,13 @@ export interface GitHubActionsRoleStackProps extends cdk.StackProps {
    * GitHub organization or username
    * @example "myorg" or "myusername"
    */
-  readonly githubOrg: string;
+  readonly repoOrg: string;
 
   /**
    * GitHub repository name
    * @example "my-repo"
    */
-  readonly githubRepo: string;
+  readonly repoName: string;
 
   /**
    * Optional: specific branch to allow (e.g., "main")
@@ -50,14 +50,14 @@ export class GitHubActionsRoleStack extends cdk.Stack {
     );
 
     // Build the subject claim for the role trust policy
-    let subjectClaim = `repo:${props.githubOrg}/${props.githubRepo}:*`;
+    let subjectClaim = `repo:${props.repoOrg}/${props.repoName}:*`;
     if (props.githubBranch) {
-      subjectClaim = `repo:${props.githubOrg}/${props.githubRepo}:ref:refs/heads/${props.githubBranch}`;
+      subjectClaim = `repo:${props.repoOrg}/${props.repoName}:ref:refs/heads/${props.githubBranch}`;
     }
 
     // Create IAM role that GitHub Actions will assume
     this.role = new iam.Role(this, "GitHubActionsRole", {
-      roleName: `github-actions-${props.githubRepo}-role`,
+      roleName: `github-actions-${props.repoName}-role`,
       assumedBy: new iam.FederatedPrincipal(
         githubProvider.openIdConnectProviderArn,
         {
@@ -70,7 +70,7 @@ export class GitHubActionsRoleStack extends cdk.Stack {
         },
         "sts:AssumeRoleWithWebIdentity",
       ),
-      description: `Role for GitHub Actions to deploy CDK stacks from ${props.githubOrg}/${props.githubRepo}`,
+      description: `Role for GitHub Actions to deploy CDK stacks from ${props.repoOrg}/${props.repoName}`,
       maxSessionDuration: cdk.Duration.hours(1),
     });
 

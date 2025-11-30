@@ -20,8 +20,8 @@ const config = {
     app.node.tryGetContext("prodAccount") || process.env.PROD_ACCOUNT_ID,
   domainName: app.node.tryGetContext("domainName") || process.env.DOMAIN_NAME,
   region: app.node.tryGetContext("region") || "us-east-1",
-  githubOrg: app.node.tryGetContext("domainName") || process.env.GITHUB_ORG,
-  githubRepo: app.node.tryGetContext("domainName") || process.env.GITHUB_REPO,
+  repoOrg: app.node.tryGetContext("repoOrg") || process.env.REPO_ORG,
+  repoName: app.node.tryGetContext("repoName") || process.env.REPO_NAME,
 };
 
 // Validate required configuration
@@ -31,9 +31,10 @@ const requiredFields = [
   "gammaAccount",
   "prodAccount",
   "domainName",
-  "githubOrg",
-  "githubRepo",
+  "repoOrg",
+  "repoName",
 ];
+
 for (const field of requiredFields) {
   if (!config[field as keyof typeof config]) {
     throw new Error(
@@ -105,8 +106,8 @@ const gammaActionsRole = new GitHubActionsRoleStack(
       account: config.gammaAccount,
       region: config.region,
     },
-    githubOrg: "colbychaskell",
-    githubRepo: "clhaskell-cdk",
+    repoOrg: "colbychaskell",
+    repoName: "clhaskell-cdk",
     githubBranch: "main",
   },
 );
@@ -120,8 +121,8 @@ const prodActionsRole = new GitHubActionsRoleStack(
       account: config.prodAccount,
       region: config.region,
     },
-    githubOrg: config.githubOrg,
-    githubRepo: config.githubRepo,
+    repoOrg: config.repoOrg,
+    repoName: config.repoName,
     githubBranch: "main",
   },
 );
