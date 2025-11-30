@@ -108,7 +108,6 @@ const gammaActionsRole = new GitHubActionsRoleStack(
     },
     repoOrg: config.repoOrg,
     repoName: config.repoName,
-    githubBranch: "main",
   },
 );
 
@@ -123,7 +122,6 @@ const prodActionsRole = new GitHubActionsRoleStack(
     },
     repoOrg: config.repoOrg,
     repoName: config.repoName,
-    githubBranch: "main",
   },
 );
 

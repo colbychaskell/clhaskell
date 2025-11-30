@@ -1,4 +1,3 @@
-import { GithubActionsIdentityProvider } from "aws-cdk-github-oidc";
 import * as cdk from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
@@ -15,12 +14,6 @@ export interface GitHubActionsRoleStackProps extends cdk.StackProps {
    * @example "my-repo"
    */
   readonly repoName: string;
-
-  /**
-   * Optional: specific branch to allow (e.g., "main")
-   * If not specified, all branches can assume the role
-   */
-  readonly githubBranch?: string;
 
   /**
    * Optional: Additional IAM policies to attach to the role
@@ -40,19 +33,24 @@ export class GitHubActionsRoleStack extends cdk.Stack {
     super(scope, id, props);
 
     // Create OIDC provider for GitHub Actions
-    const provider = new GithubActionsIdentityProvider(this, "GithubProvider");
+    const githubProvider = new iam.OpenIdConnectProvider(
+      this,
+      "GitHubProvider",
+      {
+        url: "https://token.actions.githubusercontent.com",
+        clientIds: ["sts.amazonaws.com"],
+        thumbprints: ["6938fd4d98bab03faadb97b34396831e3780aea1"],
+      },
+    );
 
     // Build the subject claim for the role trust policy
     let subjectClaim = `repo:${props.repoOrg}/${props.repoName}:*`;
-    if (props.githubBranch) {
-      subjectClaim = `repo:${props.repoOrg}/${props.repoName}:ref:refs/heads/${props.githubBranch}`;
-    }
 
     // Create IAM role that GitHub Actions will assume
     this.role = new iam.Role(this, "GitHubActionsRole", {
       roleName: `github-actions-${props.repoName}-role`,
       assumedBy: new iam.FederatedPrincipal(
-        provider.openIdConnectProviderArn,
+        githubProvider.openIdConnectProviderArn,
         {
           StringEquals: {
             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
