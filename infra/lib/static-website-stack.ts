@@ -137,13 +137,17 @@ export class StaticWebsiteStack extends Stack {
       ),
     });
 
+    const websiteBuildPath = path.join(
+      __dirname,
+      "..",
+      "..",
+      "website",
+      "dist",
+    );
+
     // Deploy from the build folder to the s3 bucket
     new s3deploy.BucketDeployment(this, "WebsiteDeployment", {
-      sources: [
-        s3deploy.Source.asset(
-          path.resolve(__dirname, "../../clhaskellelectric.com/dist"),
-        ),
-      ],
+      sources: [s3deploy.Source.asset(websiteBuildPath)],
       destinationBucket: this.bucket,
       distribution: this.distribution,
       distributionPaths: ["/*"],
