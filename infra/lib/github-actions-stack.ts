@@ -7,7 +7,7 @@ export interface GitHubActionsRoleStackProps extends cdk.StackProps {
    * GitHub organization or username
    * @example "myorg" or "myusername"
    */
-  readonly repoOrg: string;
+  readonly repoOwner: string;
 
   /**
    * GitHub repository name
@@ -43,11 +43,11 @@ export class GitHubActionsRoleStack extends cdk.Stack {
     );
 
     // Build the subject claim for the role trust policy
-    let subjectClaim = `repo:${props.repoOrg}/${props.repoName}:*`;
+    let subjectClaim = `repo:${props.repoOwner}/${props.repoName}:*`;
 
     // Create IAM role that GitHub Actions will assume
     this.role = new iam.Role(this, "GitHubActionsDeployRole", {
-      roleName: `github-actions-${props.repoOrg}-${props.repoName}-role`,
+      roleName: `github-actions-${props.repoOwner}-${props.repoName}-role`,
       assumedBy: new iam.FederatedPrincipal(
         githubProvider.openIdConnectProviderArn,
         {
@@ -60,7 +60,7 @@ export class GitHubActionsRoleStack extends cdk.Stack {
         },
         "sts:AssumeRoleWithWebIdentity",
       ),
-      description: `Role for GitHub Actions to deploy CDK stacks from ${props.repoOrg}/${props.repoName}`,
+      description: `Role for GitHub Actions to deploy CDK stacks from ${props.repoOwner}/${props.repoName}`,
       maxSessionDuration: cdk.Duration.hours(1),
     });
 

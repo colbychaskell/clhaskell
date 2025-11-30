@@ -20,7 +20,8 @@ const config = {
     app.node.tryGetContext("prodAccount") || process.env.PROD_ACCOUNT_ID,
   domainName: app.node.tryGetContext("domainName") || process.env.DOMAIN_NAME,
   region: app.node.tryGetContext("region") || "us-east-1",
-  repoOrg: app.node.tryGetContext("repoOrg") || process.env.REPO_ORG,
+  repoOwner:
+    app.node.tryGetContext("repoOwner") || process.env.GITHUB_REPOSITORY_OWNER,
   repoName: app.node.tryGetContext("repoName") || process.env.REPO_NAME,
 };
 
@@ -31,7 +32,7 @@ const requiredFields = [
   "gammaAccount",
   "prodAccount",
   "domainName",
-  "repoOrg",
+  "repoOwner",
   "repoName",
 ];
 
@@ -106,7 +107,7 @@ const gammaActionsRole = new GitHubActionsRoleStack(
       account: config.gammaAccount,
       region: config.region,
     },
-    repoOrg: config.repoOrg,
+    repoOwner: config.repoOwner,
     repoName: config.repoName,
   },
 );
@@ -120,7 +121,7 @@ const prodActionsRole = new GitHubActionsRoleStack(
       account: config.prodAccount,
       region: config.region,
     },
-    repoOrg: config.repoOrg,
+    repoOwner: config.repoOwner,
     repoName: config.repoName,
   },
 );
