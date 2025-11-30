@@ -35,11 +35,10 @@ export class GitHubActionsRoleStack extends cdk.Stack {
     // Create OIDC provider for GitHub Actions
     const githubProvider = new iam.OpenIdConnectProvider(
       this,
-      "GitHubProvider",
+      "GitHubOIDCProvider",
       {
         url: "https://token.actions.githubusercontent.com",
         clientIds: ["sts.amazonaws.com"],
-        thumbprints: ["6938fd4d98bab03faadb97b34396831e3780aea1"],
       },
     );
 
@@ -47,8 +46,8 @@ export class GitHubActionsRoleStack extends cdk.Stack {
     let subjectClaim = `repo:${props.repoOrg}/${props.repoName}:*`;
 
     // Create IAM role that GitHub Actions will assume
-    this.role = new iam.Role(this, "GitHubActionsRole", {
-      roleName: `github-actions-${props.repoName}-role`,
+    this.role = new iam.Role(this, "GitHubActionsDeployRole", {
+      roleName: `github-actions-${props.repoOrg}-${props.repoName}-role`,
       assumedBy: new iam.FederatedPrincipal(
         githubProvider.openIdConnectProviderArn,
         {
