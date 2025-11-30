@@ -1,34 +1,30 @@
 import { CfnOutput, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
 import { Construct } from "constructs";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as cf from "aws-cdk-lib/aws-cloudfront";
-import * as targets from "aws-cdk-lib/aws-route53-targets";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as route53 from "aws-cdk-lib/aws-route53";
 import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
+import * as targets from "aws-cdk-lib/aws-route53-targets";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import path = require("path");
 
 export interface StaticWebsiteStackProps extends StackProps {
   /**
-   * The subdomain for this environment (e.g., 'beta.example.com')
+   * The account id for the dns account
    */
-  domainName: string;
-
-  /**
-   * The hosted zone ID in the DNS account
-   */
-  hostedZoneId: string;
+  dnsAccountId: string;
 
   /**
    * The hosted zone name (root domain)
    */
-  hostedZoneName: string;
+  rootHostedZoneName: string;
 
   /**
-   * ARN of the cross-account role in the DNS account
+   * The subdomain for this environment (e.g., 'beta.example.com')
    */
-  crossAccountRoleArn: string;
+  domainName: string;
 
   /**
    * Stage name (e.g., 'beta' or 'gamma')
@@ -39,6 +35,7 @@ export interface StaticWebsiteStackProps extends StackProps {
 export class StaticWebsiteStack extends Stack {
   public readonly bucket: s3.Bucket;
   public readonly distribution: cf.Distribution;
+  public readonly subdomainHostedZone: route53.PublicHostedZone;
 
   constructor(scope: Construct, id: string, props: StaticWebsiteStackProps) {
     super(scope, id, props);
@@ -46,31 +43,27 @@ export class StaticWebsiteStack extends Stack {
     // Create S3 bucket to store assets
     this.bucket = new s3.Bucket(this, `SiteBucket`, {
       bucketName: `${props.stageName}-website-${this.account}`,
-      websiteIndexDocument: "index.html",
       publicReadAccess: false,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
     });
 
-    // Import the hosted zone from the DNS account
-    const hostedZone = route53.HostedZone.fromHostedZoneAttributes(
-      this,
-      "HostedZone",
-      {
-        hostedZoneId: props.hostedZoneId,
-        zoneName: props.hostedZoneName,
-      },
-    );
-
-    // Create certificate in us-east-1 for CloudFront
-    const certificate = new acm.Certificate(this, "Certificate", {
-      domainName: props.domainName,
-      validation: acm.CertificateValidation.fromDns(hostedZone),
+    // construct the ARN for our cross account role
+    const delegationRoleArn = Stack.of(this).formatArn({
+      account: props.dnsAccountId,
+      region: "",
+      resource: "role",
+      resourceName: `CrossAccountDnsManagementRole-${capitalizeFirstLetter(props.stageName)}`,
+      service: "iam",
     });
 
-    // Note: The certificate validation will use the cross-account role
-    // automatically through the Route53 hosted zone reference
+    // Get the role by ARN
+    const delegationRole = iam.Role.fromRoleArn(
+      this,
+      "DelegationRole",
+      delegationRoleArn,
+    );
 
     // Create CloudFront Origin Access Identity
     const oai = new cf.OriginAccessIdentity(this, "OAI", {
@@ -80,36 +73,64 @@ export class StaticWebsiteStack extends Stack {
     // Grant cloudfront read access to the bucket
     this.bucket.grantRead(oai);
 
+    // Create subdomain hosted zone
+    this.subdomainHostedZone = new route53.PublicHostedZone(
+      this,
+      "subdomainHostedZone",
+      {
+        zoneName: props.domainName,
+      },
+    );
+
+    const certificateArn = `arn:aws:acm:us-east-1:${props.dnsAccountId}:certificate/cf8a651d-bc88-46b5-b84a-4b64b0cfc594`;
+
+    // Create certificate in us-east-1 for CloudFront
+    const certificate =
+      props.stageName === "prod"
+        ? new acm.Certificate(this, "WebsiteCertificate", {
+            domainName: props.domainName,
+            validation: acm.CertificateValidation.fromDns(
+              this.subdomainHostedZone,
+            ),
+          })
+        : acm.Certificate.fromCertificateArn(
+            this,
+            "ImportedCertificate",
+            certificateArn,
+          );
+
+    new route53.CrossAccountZoneDelegationRecord(
+      this,
+      `DelegationRecord-${props.stageName}`,
+      {
+        delegationRole,
+        delegatedZone: this.subdomainHostedZone,
+        parentHostedZoneName: props.rootHostedZoneName,
+      },
+    );
+
     // Create CloudFront distribution
     this.distribution = new cf.Distribution(this, "Distribution", {
       defaultBehavior: {
-        origin: new origins.S3Origin(this.bucket, {
-          originAccessIdentity: oai,
-        }),
+        origin: origins.S3BucketOrigin.withOriginAccessControl(this.bucket),
         viewerProtocolPolicy: cf.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cf.CachePolicy.CACHING_OPTIMIZED,
       },
-      domainNames: [props.domainName],
+      domainNames:
+        props.stageName === "prod"
+          ? [
+              `www.${props.rootHostedZoneName}`,
+              props.rootHostedZoneName,
+              props.domainName,
+            ]
+          : [props.domainName],
       certificate: certificate,
       defaultRootObject: "index.html",
-      errorResponses: [
-        {
-          httpStatus: 404,
-          responseHttpStatus: 404,
-          responsePagePath: "/error.html",
-        },
-        {
-          httpStatus: 403,
-          responseHttpStatus: 403,
-          responsePagePath: "/error.html",
-        },
-      ],
     });
 
-    // Create subdomain NS record pointing to CloudFront
-    // This uses cross-account delegation
+    // Create DNS record pointing to CloudFront in subdomain hosted zone
     new route53.ARecord(this, "AliasRecord", {
-      zone: hostedZone,
+      zone: this.subdomainHostedZone,
       recordName: props.domainName,
       target: route53.RecordTarget.fromAlias(
         new targets.CloudFrontTarget(this.distribution),
@@ -120,7 +141,7 @@ export class StaticWebsiteStack extends Stack {
     new s3deploy.BucketDeployment(this, "WebsiteDeployment", {
       sources: [
         s3deploy.Source.asset(
-          path.resolve(__dirname, "../../../clhaskellelectric.com/dist"),
+          path.resolve(__dirname, "../../clhaskellelectric.com/dist"),
         ),
       ],
       destinationBucket: this.bucket,
@@ -129,6 +150,11 @@ export class StaticWebsiteStack extends Stack {
     });
 
     // Outputs
+    new CfnOutput(this, "DelegationRecord", {
+      value: this.subdomainHostedZone.hostedZoneId,
+      description: "Subdomain Hosted Zone ID",
+    });
+
     new CfnOutput(this, "BucketName", {
       value: this.bucket.bucketName,
       description: "S3 Bucket Name",
@@ -150,3 +176,6 @@ export class StaticWebsiteStack extends Stack {
     });
   }
 }
+
+const capitalizeFirstLetter = (val: string) =>
+  String(val).charAt(0).toUpperCase() + String(val).slice(1);

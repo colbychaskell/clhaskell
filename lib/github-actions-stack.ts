@@ -1,0 +1,132 @@
+import * as cdk from "aws-cdk-lib";
+import * as iam from "aws-cdk-lib/aws-iam";
+import { Construct } from "constructs";
+
+export interface GitHubActionsRoleStackProps extends cdk.StackProps {
+  /**
+   * GitHub organization or username
+   * @example "myorg" or "myusername"
+   */
+  readonly githubOrg: string;
+
+  /**
+   * GitHub repository name
+   * @example "my-repo"
+   */
+  readonly githubRepo: string;
+
+  /**
+   * Optional: specific branch to allow (e.g., "main")
+   * If not specified, all branches can assume the role
+   */
+  readonly githubBranch?: string;
+
+  /**
+   * Optional: Additional IAM policies to attach to the role
+   * By default, the role will have full CDK deployment permissions
+   */
+  readonly additionalPolicies?: iam.IManagedPolicy[];
+}
+
+export class GitHubActionsRoleStack extends cdk.Stack {
+  public readonly role: iam.Role;
+
+  constructor(
+    scope: Construct,
+    id: string,
+    props: GitHubActionsRoleStackProps,
+  ) {
+    super(scope, id, props);
+
+    // Create OIDC provider for GitHub Actions
+    const githubProvider = new iam.OpenIdConnectProvider(
+      this,
+      "GitHubProvider",
+      {
+        url: "https://token.actions.githubusercontent.com",
+        clientIds: ["sts.amazonaws.com"],
+        thumbprints: ["6938fd4d98bab03faadb97b34396831e3780aea1"],
+      },
+    );
+
+    // Build the subject claim for the role trust policy
+    let subjectClaim = `repo:${props.githubOrg}/${props.githubRepo}:*`;
+    if (props.githubBranch) {
+      subjectClaim = `repo:${props.githubOrg}/${props.githubRepo}:ref:refs/heads/${props.githubBranch}`;
+    }
+
+    // Create IAM role that GitHub Actions will assume
+    this.role = new iam.Role(this, "GitHubActionsRole", {
+      roleName: `github-actions-${props.githubRepo}-role`,
+      assumedBy: new iam.FederatedPrincipal(
+        githubProvider.openIdConnectProviderArn,
+        {
+          StringEquals: {
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          },
+          StringLike: {
+            "token.actions.githubusercontent.com:sub": subjectClaim,
+          },
+        },
+        "sts:AssumeRoleWithWebIdentity",
+      ),
+      description: `Role for GitHub Actions to deploy CDK stacks from ${props.githubOrg}/${props.githubRepo}`,
+      maxSessionDuration: cdk.Duration.hours(1),
+    });
+
+    // Add CDK deployment permissions
+    this.role.addManagedPolicy(
+      iam.ManagedPolicy.fromAwsManagedPolicyName("PowerUserAccess"),
+    );
+
+    // Add IAM permissions needed for CDK bootstrapping and role management
+    this.role.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:GetRole",
+          "iam:UpdateRole",
+          "iam:PassRole",
+          "iam:AttachRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:PutRolePolicy",
+          "iam:DeleteRolePolicy",
+          "iam:GetRolePolicy",
+          "iam:TagRole",
+          "iam:UntagRole",
+          "iam:CreatePolicy",
+          "iam:DeletePolicy",
+          "iam:GetPolicy",
+          "iam:GetPolicyVersion",
+          "iam:ListPolicyVersions",
+          "iam:CreatePolicyVersion",
+          "iam:DeletePolicyVersion",
+          "iam:TagPolicy",
+          "iam:UntagPolicy",
+        ],
+        resources: ["*"],
+      }),
+    );
+
+    // Add any additional policies
+    if (props.additionalPolicies) {
+      props.additionalPolicies.forEach((policy) => {
+        this.role.addManagedPolicy(policy);
+      });
+    }
+
+    // Output the role ARN for use in GitHub Actions
+    new cdk.CfnOutput(this, "RoleArn", {
+      value: this.role.roleArn,
+      description: "ARN of the IAM role for GitHub Actions",
+      exportName: `${this.stackName}-RoleArn`,
+    });
+
+    new cdk.CfnOutput(this, "RoleName", {
+      value: this.role.roleName,
+      description: "Name of the IAM role for GitHub Actions",
+    });
+  }
+}

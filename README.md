@@ -1,10 +1,16 @@
-# Welcome to your CDK TypeScript project
+# clhaskell
 
-This is a blank project for CDK development with TypeScript.
+## Initial Deployment
+
+To bootstrap the IAM role for Github Actions, you must first locally deploy the github actions stacks
+in the target accounts.
+
+
+## CDK Notes
 
 The `cdk.json` file tells the CDK Toolkit how to execute your app.
 
-## Useful commands
+### Useful commands
 
 * `npm run build`   compile typescript to js
 * `npm run watch`   watch for changes and compile
