@@ -1,3 +1,4 @@
+import { GithubActionsIdentityProvider } from "aws-cdk-github-oidc";
 import * as cdk from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
@@ -39,15 +40,7 @@ export class GitHubActionsRoleStack extends cdk.Stack {
     super(scope, id, props);
 
     // Create OIDC provider for GitHub Actions
-    const githubProvider = new iam.OpenIdConnectProvider(
-      this,
-      "GitHubProvider",
-      {
-        url: "https://token.actions.githubusercontent.com",
-        clientIds: ["sts.amazonaws.com"],
-        thumbprints: ["6938fd4d98bab03faadb97b34396831e3780aea1"],
-      },
-    );
+    const provider = new GithubActionsIdentityProvider(this, "GithubProvider");
 
     // Build the subject claim for the role trust policy
     let subjectClaim = `repo:${props.repoOrg}/${props.repoName}:*`;
@@ -59,7 +52,7 @@ export class GitHubActionsRoleStack extends cdk.Stack {
     this.role = new iam.Role(this, "GitHubActionsRole", {
       roleName: `github-actions-${props.repoName}-role`,
       assumedBy: new iam.FederatedPrincipal(
-        githubProvider.openIdConnectProviderArn,
+        provider.openIdConnectProviderArn,
         {
           StringEquals: {
             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",

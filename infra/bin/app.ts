@@ -106,8 +106,8 @@ const gammaActionsRole = new GitHubActionsRoleStack(
       account: config.gammaAccount,
       region: config.region,
     },
-    repoOrg: "colbychaskell",
-    repoName: "clhaskell-cdk",
+    repoOrg: config.repoOrg,
+    repoName: config.repoName,
     githubBranch: "main",
   },
 );
