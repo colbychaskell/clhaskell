@@ -1,0 +1,29 @@
+name: Deploy
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: gamma
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm ci
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-${{ vars.REPO_ORG }}-${{ vars.REPO_NAME }}-role
+          aws-region: us-east-1
+      - name: Build website
+        working-directory: website
+        run: npm run build
+      - name: Deploy
+        working-directory: infra
+        run: npm run cdk deploy -- "${{ vars.STAGE_NAME }}*" --require-approval never
