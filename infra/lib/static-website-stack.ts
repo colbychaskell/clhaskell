@@ -36,6 +36,7 @@ export class StaticWebsiteStack extends Stack {
   public readonly bucket: s3.Bucket;
   public readonly distribution: cf.Distribution;
   public readonly subdomainHostedZone: route53.PublicHostedZone;
+  public readonly crossAccountDelegationRecord: route53.CrossAccountZoneDelegationRecord;
 
   constructor(scope: Construct, id: string, props: StaticWebsiteStackProps) {
     super(scope, id, props);
@@ -54,7 +55,7 @@ export class StaticWebsiteStack extends Stack {
       account: props.dnsAccountId,
       region: "",
       resource: "role",
-      resourceName: `CrossAccountDnsManagementRole-${capitalizeFirstLetter(props.stageName)}`,
+      resourceName: `CrossAccountDnsManagementRole-${props.stageName}`,
       service: "iam",
     });
 
@@ -82,24 +83,19 @@ export class StaticWebsiteStack extends Stack {
       },
     );
 
-    const certificateArn = `arn:aws:acm:us-east-1:${props.dnsAccountId}:certificate/cf8a651d-bc88-46b5-b84a-4b64b0cfc594`;
-
     // Create certificate in us-east-1 for CloudFront
-    const certificate =
-      props.stageName === "prod"
-        ? new acm.Certificate(this, "WebsiteCertificate", {
-            domainName: props.domainName,
-            validation: acm.CertificateValidation.fromDns(
-              this.subdomainHostedZone,
-            ),
-          })
-        : acm.Certificate.fromCertificateArn(
-            this,
-            "ImportedCertificate",
-            certificateArn,
-          );
+    const certificate = new acm.Certificate(this, "SubdomainCertificate", {
+      domainName: props.domainName,
+      subjectAlternativeNames:
+        props.stageName == "prod"
+          ? [`www.${props.rootHostedZoneName}`, props.rootHostedZoneName]
+          : [],
+      // NOTE: This will require manually adding the certificate validation
+      // records in the root hosted zone
+      validation: acm.CertificateValidation.fromDns(),
+    });
 
-    new route53.CrossAccountZoneDelegationRecord(
+    const delegationRecord = new route53.CrossAccountZoneDelegationRecord(
       this,
       `DelegationRecord-${props.stageName}`,
       {
@@ -109,6 +105,8 @@ export class StaticWebsiteStack extends Stack {
       },
     );
 
+    certificate.node.addDependency(delegationRecord);
+
     // Create CloudFront distribution
     this.distribution = new cf.Distribution(this, "Distribution", {
       defaultBehavior: {
@@ -117,17 +115,26 @@ export class StaticWebsiteStack extends Stack {
         cachePolicy: cf.CachePolicy.CACHING_OPTIMIZED,
       },
       domainNames:
-        props.stageName === "prod"
+        props.stageName == "prod"
           ? [
-              `www.${props.rootHostedZoneName}`,
               props.rootHostedZoneName,
+              `www.${props.rootHostedZoneName}`,
               props.domainName,
             ]
           : [props.domainName],
       certificate: certificate,
       defaultRootObject: "index.html",
+      // TODO: For now just redircting home on 404
+      errorResponses: [
+        {
+          httpStatus: 404,
+          responseHttpStatus: 200,
+          responsePagePath: "/index.html",
+        },
+      ],
     });
 
+    // Setup stage subdomain dns (e.g. gamma.clhaskellelectric.com)
     // Create DNS record pointing to CloudFront in subdomain hosted zone
     new route53.ARecord(this, "AliasRecord", {
       zone: this.subdomainHostedZone,
@@ -136,6 +143,17 @@ export class StaticWebsiteStack extends Stack {
         new targets.CloudFrontTarget(this.distribution),
       ),
     });
+
+    this.crossAccountDelegationRecord =
+      new route53.CrossAccountZoneDelegationRecord(
+        this,
+        "subdomainDelegationRecord",
+        {
+          delegatedZone: this.subdomainHostedZone,
+          parentHostedZoneName: props.rootHostedZoneName,
+          delegationRole,
+        },
+      );
 
     const websiteBuildPath = path.join(
       __dirname,
@@ -180,6 +198,3 @@ export class StaticWebsiteStack extends Stack {
     });
   }
 }
-
-const capitalizeFirstLetter = (val: string) =>
-  String(val).charAt(0).toUpperCase() + String(val).slice(1);

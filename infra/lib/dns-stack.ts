@@ -5,7 +5,7 @@ import { Construct } from "constructs";
 
 export interface DnsStackProps extends StackProps {
   readonly domainName: string;
-  readonly trustedAccountIds: string[];
+  readonly trustedAccounts: Record<string, string>;
 }
 
 export class DnsStack extends Stack {
@@ -15,6 +15,7 @@ export class DnsStack extends Stack {
   constructor(scope: Construct, id: string, props: DnsStackProps) {
     super(scope, id, props);
 
+    // Create root hosted zone
     this.hostedZone = new route53.PublicHostedZone(this, "RootHostedZone", {
       zoneName: props.domainName,
     });
@@ -23,40 +24,51 @@ export class DnsStack extends Stack {
     );
 
     // Create IAM role that staging accounts can assume
-    this.crossAccountRole = new iam.Role(this, "CrossAccountDnsRole", {
-      roleName: "CrossAccountDnsManagementRole",
-      assumedBy: new iam.CompositePrincipal(
-        ...props.trustedAccountIds.map(
-          (accountId) => new iam.AccountPrincipal(accountId),
-        ),
-      ),
-      description: "Role allowing cross-account DNS record management",
-    });
+    for (const [stageName, account] of Object.entries(props.trustedAccounts)) {
+      const crossAccountRole = new iam.Role(
+        this,
+        `CrossAccountDnsManagementRole-${stageName}`,
+        {
+          roleName: `CrossAccountDnsManagementRole-${stageName}`,
+          assumedBy: new iam.AccountPrincipal(account),
+          inlinePolicies: {
+            delegation: new iam.PolicyDocument({
+              statements: [
+                new iam.PolicyStatement({
+                  effect: iam.Effect.ALLOW,
+                  actions: ["route53:ListHostedZonesByName"],
+                  resources: ["*"],
+                }),
+                new iam.PolicyStatement({
+                  effect: iam.Effect.ALLOW,
+                  actions: ["route53:GetHostedZone"],
+                  resources: [this.hostedZone.hostedZoneArn],
+                }),
+                new iam.PolicyStatement({
+                  effect: iam.Effect.ALLOW,
+                  actions: ["route53:ChangeResourceRecordSets"],
+                  resources: [this.hostedZone.hostedZoneArn],
+                  conditions: {
+                    "ForAnyValue:StringLike": {
+                      "route53:ChangeResourceRecordSetsNormalizedRecordNames": [
+                        `*${stageName}.${props.domainName}`,
+                      ],
+                    },
+                  },
+                }),
+              ],
+            }),
+          },
+        },
+      );
 
-    // Grant permissions to manage Route53 records in this hosted zone
-    this.crossAccountRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: [
-          "route53:ChangeResourceRecordSets",
-          "route53:GetChange",
-          "route53:ListResourceRecordSets",
-        ],
-        resources: [
-          this.hostedZone.hostedZoneArn,
-          "arn:aws:route53:::change/*",
-        ],
-      }),
-    );
-
-    // Additional permissions for certificate validation
-    this.crossAccountRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["route53:GetHostedZone", "route53:ListHostedZones"],
-        resources: ["*"],
-      }),
-    );
+      // Output the stage subdomain cross account role arn
+      new CfnOutput(this, `CrossAccountRoleArn-${stageName}`, {
+        value: crossAccountRole.roleArn,
+        description: "ARN of the cross-account DNS management role",
+        exportName: `${this.stackName}-CrossAccountRoleArn-${stageName}`,
+      });
+    }
 
     new CfnOutput(this, "HostedZoneId", {
       value: this.hostedZone.hostedZoneId,
@@ -68,12 +80,6 @@ export class DnsStack extends Stack {
       value: this.hostedZone.zoneName,
       description: "Hosted Zone Name",
       exportName: `${this.stackName}-HostedZoneName`,
-    });
-
-    new CfnOutput(this, "CrossAccountRoleArn", {
-      value: this.crossAccountRole.roleArn,
-      description: "ARN of the cross-account DNS management role",
-      exportName: `${this.stackName}-CrossAccountRoleArn`,
     });
 
     new CfnOutput(this, "NameServers", {

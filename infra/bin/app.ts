@@ -12,8 +12,6 @@ const app = new cdk.App();
 const config = {
   dnsAccount:
     app.node.tryGetContext("dnsAccount") || process.env.DNS_ACCOUNT_ID,
-  // betaAccount:
-  //   app.node.tryGetContext("betaAccount") || process.env.BETA_ACCOUNT_ID,
   gammaAccount:
     app.node.tryGetContext("gammaAccount") || process.env.GAMMA_ACCOUNT_ID,
   prodAccount:
@@ -26,9 +24,8 @@ const config = {
 };
 
 // Validate required configuration
-const requiredFields = [
+const requiredEnvironmentVars = [
   "dnsAccount",
-  // "betaAccount",
   "gammaAccount",
   "prodAccount",
   "domainName",
@@ -36,7 +33,7 @@ const requiredFields = [
   "repoName",
 ];
 
-for (const field of requiredFields) {
+for (const field of requiredEnvironmentVars) {
   if (!config[field as keyof typeof config]) {
     throw new Error(
       `Missing required configuration: ${field}. ` +
@@ -45,36 +42,21 @@ for (const field of requiredFields) {
   }
 }
 
-// TODO: Move DNS to the DNS Account before using this
-//
 // Deploy DNS Stack to DNS Account
-// const dnsStack = new DnsStack(app, "DnsStack", {
-//   env: {
-//     account: config.dnsAccount,
-//     region: config.region,
-//   },
-//   domainName: config.domainName,
-//   trustedAccountIds: [
-//     config.betaAccount,
-//     config.gammaAccount,
-//     config.prodAccount,
-//   ],
-// });
-
-// Deploy Beta Website Stack to Beta Account
-// const betaStack = new StaticWebsiteStack(app, "BetaStaticWebsiteStack", {
-//   env: {
-//     account: config.betaAccount,
-//     region: config.region,
-//   },
-//   dnsAccountId: config.dnsAccount,
-//   rootHostedZoneName: config.domainName,
-//   domainName: `beta.${config.domainName}`,
-//   stageName: "beta",
-// });
+new DnsStack(app, "DnsStack", {
+  env: {
+    account: config.dnsAccount,
+    region: config.region,
+  },
+  domainName: config.domainName,
+  trustedAccounts: {
+    gamma: config.gammaAccount,
+    prod: config.prodAccount,
+  },
+});
 
 // Deploy Gamma Website Stack to Gamma Account
-const gammaStack = new StaticWebsiteStack(app, "GammaStaticWebsiteStack", {
+new StaticWebsiteStack(app, "GammaStaticWebsiteStack", {
   env: {
     account: config.gammaAccount,
     region: config.region,
@@ -87,7 +69,7 @@ const gammaStack = new StaticWebsiteStack(app, "GammaStaticWebsiteStack", {
 
 // Deploy Production Website Stack to Prod Account
 // Production uses the root domain (no subdomain prefix)
-const prodStack = new StaticWebsiteStack(app, "ProdStaticWebsiteStack", {
+new StaticWebsiteStack(app, "ProdStaticWebsiteStack", {
   env: {
     account: config.prodAccount,
     region: config.region,
@@ -99,31 +81,23 @@ const prodStack = new StaticWebsiteStack(app, "ProdStaticWebsiteStack", {
 });
 
 // Create the role for GitHub actions to use the accounts
-const gammaActionsRole = new GitHubActionsRoleStack(
-  app,
-  "GammaGitHubActionsRole",
-  {
-    env: {
-      account: config.gammaAccount,
-      region: config.region,
-    },
-    repoOwner: config.repoOwner,
-    repoName: config.repoName,
+new GitHubActionsRoleStack(app, "GammaGitHubActionsRole", {
+  env: {
+    account: config.gammaAccount,
+    region: config.region,
   },
-);
+  repoOwner: config.repoOwner,
+  repoName: config.repoName,
+});
 
 // Create the role for GitHub actions to use the accounts
-const prodActionsRole = new GitHubActionsRoleStack(
-  app,
-  "ProdGitHubActionsRole",
-  {
-    env: {
-      account: config.prodAccount,
-      region: config.region,
-    },
-    repoOwner: config.repoOwner,
-    repoName: config.repoName,
+new GitHubActionsRoleStack(app, "ProdGitHubActionsRole", {
+  env: {
+    account: config.prodAccount,
+    region: config.region,
   },
-);
+  repoOwner: config.repoOwner,
+  repoName: config.repoName,
+});
 
 app.synth();
