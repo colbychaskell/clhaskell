@@ -87,9 +87,7 @@ export class StaticWebsiteStack extends Stack {
     const certificate = new acm.Certificate(this, "SubdomainCertificate", {
       domainName: props.domainName,
       subjectAlternativeNames:
-        props.stageName == "prod"
-          ? [`www.${props.rootHostedZoneName}`, props.rootHostedZoneName]
-          : [],
+        props.stageName == "prod" ? [props.rootHostedZoneName] : [],
       // NOTE: This will require manually adding the certificate validation
       // records in the root hosted zone
       validation: acm.CertificateValidation.fromDns(),
@@ -116,11 +114,7 @@ export class StaticWebsiteStack extends Stack {
       },
       domainNames:
         props.stageName == "prod"
-          ? [
-              props.rootHostedZoneName,
-              `www.${props.rootHostedZoneName}`,
-              props.domainName,
-            ]
+          ? [props.rootHostedZoneName, props.domainName]
           : [props.domainName],
       certificate: certificate,
       defaultRootObject: "index.html",

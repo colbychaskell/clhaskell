@@ -63,6 +63,16 @@ const stages = ["Gamma", "Prod"];
 
 stages.forEach((stage) => {
   const stageName = stage.toLowerCase();
+  // Create a role for GitHub actions to assume
+  new GitHubActionsRoleStack(app, `${stage}GitHubActionsRole`, {
+    env: {
+      region: config.region,
+    },
+    dnsAccountId: config.dnsAccount,
+    stage: stageName,
+    repoOwner: config.repoOwner,
+    repoName: config.repoName,
+  });
 
   // Deploy Gamma Website Stack to Gamma Account
   new StaticWebsiteStack(app, `${stage}StaticWebsiteStack`, {
@@ -74,16 +84,6 @@ stages.forEach((stage) => {
     rootHostedZoneName: config.domainName,
     domainName: `${stageName}.${config.domainName}`,
     stageName,
-  });
-
-  // Create the role for GitHub actions to use the accounts
-  new GitHubActionsRoleStack(app, `${stage}GitHubActionsRole`, {
-    env: {
-      account: stageAccounts[stageName],
-      region: config.region,
-    },
-    repoOwner: config.repoOwner,
-    repoName: config.repoName,
   });
 });
 

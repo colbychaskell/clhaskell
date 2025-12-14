@@ -16,6 +16,16 @@ export interface GitHubActionsRoleStackProps extends cdk.StackProps {
   readonly repoName: string;
 
   /**
+   * AWS Account ID of the DNS account
+   */
+  readonly dnsAccountId: string;
+
+  /**
+   * List of deployment stages
+   */
+  readonly stage: string;
+
+  /**
    * Optional: Additional IAM policies to attach to the role
    * By default, the role will have full CDK deployment permissions
    */
@@ -97,6 +107,23 @@ export class GitHubActionsRoleStack extends cdk.Stack {
           "iam:UntagPolicy",
         ],
         resources: ["*"],
+      }),
+    );
+
+    // Add each cross delegation role assume role perms
+    const delegationRoleArn = cdk.Stack.of(this).formatArn({
+      account: props.dnsAccountId,
+      region: "",
+      resource: "role",
+      resourceName: `CrossAccountDnsManagementRole-${props.stage}`,
+      service: "iam",
+    });
+
+    this.role.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["sts:AssumeRole"],
+        resources: [delegationRoleArn],
       }),
     );
 
