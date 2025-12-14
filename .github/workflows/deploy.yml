@@ -10,9 +10,40 @@ env:
   AWS_REGION: "us-east-1"
 
 jobs:
-  deploy:
+  gamma-deploy:
     runs-on: ubuntu-latest
     environment: gamma
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm ci
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v5.1.1
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-${{ github.repository_owner }}-${{ github.event.repository.name }}-role
+          role-session-name: ${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Build website
+        working-directory: website
+        run: npm run build
+      - name: Deploy
+        working-directory: infra
+        env:
+          DNS_ACCOUNT_ID: ${{ secrets.DNS_ACCOUNT_ID }}
+          GAMMA_ACCOUNT_ID: ${{ secrets.GAMMA_ACCOUNT_ID }}
+          PROD_ACCOUNT_ID: ${{ secrets.PROD_ACCOUNT_ID }}
+          DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: npm run cdk deploy -- "${{ vars.STAGE_NAME }}*" --require-approval never
+
+  prod-deploy:
+    needs: gamma-deploy
+    runs-on: ubuntu-latest
+    environment: prod
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
