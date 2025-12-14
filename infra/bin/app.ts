@@ -42,6 +42,12 @@ for (const field of requiredEnvironmentVars) {
   }
 }
 
+const stageAccounts: Record<string, string> = {
+  gamma: config.gammaAccount,
+  prod: config.prodAccount,
+};
+
+// NOTE: Only deploy this in the root DNS account
 // Deploy DNS Stack to DNS Account
 new DnsStack(app, "DnsStack", {
   env: {
@@ -49,55 +55,36 @@ new DnsStack(app, "DnsStack", {
     region: config.region,
   },
   domainName: config.domainName,
-  trustedAccounts: {
-    gamma: config.gammaAccount,
-    prod: config.prodAccount,
-  },
+  trustedAccounts: stageAccounts,
 });
 
-// Deploy Gamma Website Stack to Gamma Account
-new StaticWebsiteStack(app, "GammaStaticWebsiteStack", {
-  env: {
-    account: config.gammaAccount,
-    region: config.region,
-  },
-  dnsAccountId: config.dnsAccount,
-  rootHostedZoneName: config.domainName,
-  domainName: `gamma.${config.domainName}`,
-  stageName: "gamma",
-});
+// Create list of stages to create stage stacks for
+const stages = ["Gamma", "Prod"];
 
-// Deploy Production Website Stack to Prod Account
-// Production uses the root domain (no subdomain prefix)
-new StaticWebsiteStack(app, "ProdStaticWebsiteStack", {
-  env: {
-    account: config.prodAccount,
-    region: config.region,
-  },
-  dnsAccountId: config.dnsAccount,
-  rootHostedZoneName: config.domainName,
-  domainName: `prod.${config.domainName}`,
-  stageName: "prod",
-});
+stages.forEach((stage) => {
+  const stageName = stage.toLowerCase();
 
-// Create the role for GitHub actions to use the accounts
-new GitHubActionsRoleStack(app, "GammaGitHubActionsRole", {
-  env: {
-    account: config.gammaAccount,
-    region: config.region,
-  },
-  repoOwner: config.repoOwner,
-  repoName: config.repoName,
-});
+  // Deploy Gamma Website Stack to Gamma Account
+  new StaticWebsiteStack(app, `${stage}StaticWebsiteStack`, {
+    env: {
+      account: stageAccounts[stageName],
+      region: config.region,
+    },
+    dnsAccountId: config.dnsAccount,
+    rootHostedZoneName: config.domainName,
+    domainName: `${stageName}.${config.domainName}`,
+    stageName,
+  });
 
-// Create the role for GitHub actions to use the accounts
-new GitHubActionsRoleStack(app, "ProdGitHubActionsRole", {
-  env: {
-    account: config.prodAccount,
-    region: config.region,
-  },
-  repoOwner: config.repoOwner,
-  repoName: config.repoName,
+  // Create the role for GitHub actions to use the accounts
+  new GitHubActionsRoleStack(app, `${stage}GitHubActionsRole`, {
+    env: {
+      account: stageAccounts[stageName],
+      region: config.region,
+    },
+    repoOwner: config.repoOwner,
+    repoName: config.repoName,
+  });
 });
 
 app.synth();
